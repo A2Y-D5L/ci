@@ -9,7 +9,29 @@ import (
 	"syscall"
 )
 
-// DefaultCommandFactory creates real os/exec commands.
+// DefaultCommandFactory creates real os/exec commands for process execution.
+// This is the production implementation of CommandFactory that actually spawns
+// system processes.
+//
+// The factory:
+//   - Creates an exec.Cmd using the spec's Command and Args
+//   - Wraps it in execCommand to implement the Command interface
+//   - Does not modify environment or working directory (uses parent process settings)
+//   - Inherits stdin from parent (connected to /dev/null or equivalent)
+//
+// This factory is used automatically when Engine.CommandFactory is nil.
+//
+// Example (implicit usage):
+//
+//	eng := engine.New(specs, timeout)
+//	// DefaultCommandFactory will be used automatically
+//
+// Example (explicit usage):
+//
+//	eng := &Engine{
+//	    Specs: specs,
+//	    CommandFactory: engine.DefaultCommandFactory,
+//	}
 func DefaultCommandFactory(ctx context.Context, spec ProcessSpec) (Command, error) {
 	return &execCommand{
 		spec: spec,

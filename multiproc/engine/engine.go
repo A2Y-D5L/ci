@@ -11,9 +11,50 @@ import (
 	"time"
 )
 
-// Run executes all configured processes and emits ProcessLine events to the output channel.
-// The channel is closed when all processes complete.
-// This method blocks until all processes finish or the context is cancelled.
+// Run executes all configured processes concurrently and emits ProcessLine events
+// to the output channel. This is the main entry point for the Engine.
+//
+// Behavior:
+//   - Spawns one goroutine per process in Specs
+//   - Each goroutine captures stdout and stderr, emitting line events
+//   - Handles graceful shutdown when context is cancelled
+//   - Closes the output channel when all processes complete
+//   - Blocks until all processes finish or are terminated
+//
+// Event sequence per process:
+//   1. Zero or more line events (ProcessLine with IsComplete=false)
+//   2. Exactly one completion event (ProcessLine with IsComplete=true)
+//
+// Graceful shutdown:
+//   - When ctx is cancelled, sends SIGTERM to all running processes
+//   - Waits up to ShutdownTimeout for graceful termination
+//   - Sends SIGKILL to force termination of unresponsive processes
+//
+// Parameters:
+//   - ctx: Context for cancellation and lifecycle management
+//   - output: Channel to receive ProcessLine events (caller should buffer appropriately)
+//
+// The output channel is closed when Run() completes, allowing for:
+//
+//	for pl := range output {
+//	    // Process events
+//	}
+//
+// Example:
+//
+//	ctx, cancel := context.WithCancel(context.Background())
+//	defer cancel()
+//
+//	output := make(chan engine.ProcessLine, 128)
+//	go eng.Run(ctx, output)
+//
+//	for pl := range output {
+//	    if pl.IsComplete {
+//	        fmt.Printf("Process %d done: %v\n", pl.Index, pl.Err)
+//	    } else {
+//	        fmt.Printf("[%s] %s\n", eng.Specs[pl.Index].Name, pl.Line)
+//	    }
+//	}
 func (eng *Engine) Run(ctx context.Context, output chan<- ProcessLine) {
 	defer close(output)
 
@@ -32,6 +73,31 @@ func (eng *Engine) Run(ctx context.Context, output chan<- ProcessLine) {
 }
 
 // runProcess executes a single process and emits its output as ProcessLine events.
+// This function is called concurrently for each process in the Specs slice.
+//
+// Lifecycle:
+//  1. Create command using CommandFactory
+//  2. Set up stdout and stderr pipes
+//  3. Start the process
+//  4. Spawn goroutines to read from stdout and stderr
+//  5. Monitor for process completion or context cancellation
+//  6. Handle graceful shutdown on cancellation
+//  7. Emit final completion event
+//
+// Error handling:
+//   - Command creation errors: Emit completion event with error
+//   - Pipe setup errors: Emit completion event with error
+//   - Start errors: Emit completion event with error
+//   - Stream read errors: Emit line event with error message
+//   - Process exit errors: Included in completion event
+//
+// Graceful shutdown sequence:
+//   1. Send SIGTERM to process
+//   2. Wait up to ShutdownTimeout
+//   3. If timeout expires, send SIGKILL
+//   4. Emit status messages at each step
+//
+// This function always emits exactly one completion event, even if errors occur.
 func (eng *Engine) runProcess(
 	ctx context.Context,
 	idx int,
