@@ -1,45 +1,16 @@
 package target
 
-import (
-	"context"
-	"fmt"
-	"os"
-	"os/exec"
-)
+import "context"
 
 var (
-	Lint = New("Lint", "Run code linters", func(ctx context.Context) error {
-		cmd := exec.CommandContext(ctx, "golangci-lint", "run", "./...")
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("golangci-lint: %w", err)
-		}
-		return nil
-	})
+	Lint = Cmd("Lint", "Run code linters", "golangci-lint", "run", "./...")
 
-	Test = New("Test", "Run unit tests", func(ctx context.Context) error {
-		cmd := exec.CommandContext(ctx, "go", "test", "./...")
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("go test: %w", err)
-		}
-		return nil
-	}, Lint)
+	Test = CmdWithDeps("Test", "Run unit tests", []T{Lint}, "go", "test", "./...")
 
-	Build = New("Build", "Build binaries/artifacts", func(ctx context.Context) error {
-		cmd := exec.CommandContext(ctx, "go", "build", "./cmd/...")
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("go build: %w", err)
-		}
-		return nil
-	}, Test)
+	Build = CmdWithDeps("Build", "Build binaries/artifacts", []T{Test}, "go", "build", "./cmd/...")
 
 	All = New("All", "Run full CI pipeline", func(ctx context.Context) error {
-		// TargetAll is an orchestration node; no additional work needed.
+		// All is an orchestration node; no additional work needed.
 		_ = ctx
 		return nil
 	}, Build)

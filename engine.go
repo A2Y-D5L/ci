@@ -1,10 +1,11 @@
 package ci
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"io"
 	"runtime"
 	"strings"
 	"sync"
@@ -43,14 +44,19 @@ type node struct {
 	result Result
 }
 
-// RunTargets runs CI targets.
+// RunTargets runs CI targets without event handling.
 func RunTargets(ctx context.Context, targets ...target.T) (map[string]Result, error) {
+	return RunTargetsWithHandler(ctx, nil, targets...)
+}
+
+// RunTargetsWithHandler runs CI targets with an event handler.
+func RunTargetsWithHandler(ctx context.Context, handler EventHandler, targets ...target.T) (map[string]Result, error) {
 	// Ensure the dependency graph is acyclic.
 	if err := detectCycles(targets...); err != nil {
 		return nil, err
 	}
 
-	return run(ctx, targets...)
+	return run(ctx, handler, targets...)
 }
 
 // detectCycles performs DFS-based cycle detection over the definitions.
@@ -180,7 +186,7 @@ func sortStrings(s []string) {
 }
 
 // run executes the DAG for the specified targets and their dependencies.
-func run(ctx context.Context, targets ...target.T) (map[string]Result, error) {
+func run(ctx context.Context, handler EventHandler, targets ...target.T) (map[string]Result, error) {
 	if ctx == nil {
 		return nil, errors.New("context must not be nil")
 	}
@@ -192,6 +198,8 @@ func run(ctx context.Context, targets ...target.T) (map[string]Result, error) {
 	if len(required) == 0 {
 		return map[string]Result{}, nil
 	}
+
+	pipelineStart := time.Now()
 
 	// Collect all required targets (including dependencies) for graph building
 	allTargets := make([]target.T, 0, len(required))
@@ -216,6 +224,14 @@ func run(ctx context.Context, targets ...target.T) (map[string]Result, error) {
 	nodes, err := buildRuntimeGraph(allTargets...)
 	if err != nil {
 		return nil, err
+	}
+
+	// Emit pipeline started event
+	if handler != nil {
+		handler.HandleEvent(PipelineStartedEvent{
+			Time:         pipelineStart,
+			TotalTargets: len(nodes),
+		})
 	}
 
 	// Concurrency limiter (semaphore).
@@ -248,14 +264,27 @@ func run(ctx context.Context, targets ...target.T) (map[string]Result, error) {
 					dep.mu.Unlock()
 
 					if depFailed {
+						now := time.Now()
 						n.mu.Lock()
 						n.result = Result{
 							Target:      n.tgt,
-							StartedAt:   time.Now(),
-							CompletedAt: time.Now(),
+							StartedAt:   now,
+							CompletedAt: now,
 							Skipped:     true,
 						}
 						n.mu.Unlock()
+
+						// Emit target completed event for skipped target
+						if handler != nil {
+							handler.HandleEvent(TargetCompletedEvent{
+								Time:     now,
+								Target:   n.tgt,
+								Duration: 0,
+								Error:    nil,
+								Skipped:  true,
+							})
+						}
+
 						close(n.done)
 						return
 					}
@@ -264,14 +293,27 @@ func run(ctx context.Context, targets ...target.T) (map[string]Result, error) {
 				// If context is already canceled, skip this target.
 				select {
 				case <-ctx.Done():
+					now := time.Now()
 					n.mu.Lock()
 					n.result = Result{
 						Target:      n.tgt,
-						StartedAt:   time.Now(),
-						CompletedAt: time.Now(),
+						StartedAt:   now,
+						CompletedAt: now,
 						Skipped:     true,
 					}
 					n.mu.Unlock()
+
+					// Emit target completed event for skipped target
+					if handler != nil {
+						handler.HandleEvent(TargetCompletedEvent{
+							Time:     now,
+							Target:   n.tgt,
+							Duration: 0,
+							Error:    nil,
+							Skipped:  true,
+						})
+					}
+
 					close(n.done)
 					return
 				default:
@@ -281,10 +323,25 @@ func run(ctx context.Context, targets ...target.T) (map[string]Result, error) {
 				sem <- struct{}{}
 				start := time.Now()
 
-				log.Printf("Running %q", n.tgt.Name())
-				err := n.tgt.Run(ctx)
+				// Emit target started event
+				if handler != nil {
+					handler.HandleEvent(TargetStartedEvent{
+						Time:   start,
+						Target: n.tgt,
+					})
+				}
+
+				// Execute target with optional output capture
+				var err error
+				if targetWithStreams, ok := n.tgt.(target.RunWithStreams); ok && handler != nil {
+					// Target supports output capture - set up pipes
+					err = runWithCapture(ctx, targetWithStreams, n.tgt, handler)
+				} else {
+					// Fall back to regular Run() - output goes to os.Stdout/Stderr
+					err = n.tgt.Run(ctx)
+				}
+
 				end := time.Now()
-				log.Printf("Finished %q (err=%v)", n.tgt.Name(), err)
 
 				n.mu.Lock()
 				n.result = Result{
@@ -295,6 +352,18 @@ func run(ctx context.Context, targets ...target.T) (map[string]Result, error) {
 					Skipped:     false,
 				}
 				n.mu.Unlock()
+
+				// Emit target completed event
+				if handler != nil {
+					handler.HandleEvent(TargetCompletedEvent{
+						Time:     end,
+						Target:   n.tgt,
+						Duration: end.Sub(start),
+						Error:    err,
+						Skipped:  false,
+					})
+				}
+
 				<-sem // Release concurrency slot.
 				close(n.done)
 			})
@@ -352,5 +421,68 @@ func run(ctx context.Context, targets ...target.T) (map[string]Result, error) {
 		aggErr = errors.Join(errs...)
 	}
 
+	// Emit pipeline completed event
+	if handler != nil {
+		handler.HandleEvent(PipelineCompletedEvent{
+			Time:     time.Now(),
+			Duration: time.Since(pipelineStart),
+			Results:  results,
+			Error:    aggErr,
+		})
+	}
+
 	return results, aggErr
+}
+
+// runWithCapture executes a target with output capture enabled.
+// It creates pipes for stdout/stderr, starts goroutines to read from them
+// and emit TargetOutputEvent, then runs the target with the pipe writers.
+func runWithCapture(ctx context.Context, targetWithStreams target.RunWithStreams, tgt target.T, handler EventHandler) error {
+	// Create pipes for stdout and stderr
+	stdoutR, stdoutW := io.Pipe()
+	stderrR, stderrW := io.Pipe()
+
+	// Start goroutines to capture output
+	var captureWg sync.WaitGroup
+	captureWg.Add(2)
+
+	// Capture stdout
+	go func() {
+		defer captureWg.Done()
+		scanner := bufio.NewScanner(stdoutR)
+		for scanner.Scan() {
+			handler.HandleEvent(TargetOutputEvent{
+				Time:   time.Now(),
+				Target: tgt,
+				Stream: StreamStdout,
+				Line:   scanner.Text(),
+			})
+		}
+	}()
+
+	// Capture stderr
+	go func() {
+		defer captureWg.Done()
+		scanner := bufio.NewScanner(stderrR)
+		for scanner.Scan() {
+			handler.HandleEvent(TargetOutputEvent{
+				Time:   time.Now(),
+				Target: tgt,
+				Stream: StreamStderr,
+				Line:   scanner.Text(),
+			})
+		}
+	}()
+
+	// Run the target with custom streams
+	err := targetWithStreams.RunWithStreams(ctx, stdoutW, stderrW)
+
+	// Close the write ends of the pipes to signal EOF to the readers
+	stdoutW.Close()
+	stderrW.Close()
+
+	// Wait for all output to be captured
+	captureWg.Wait()
+
+	return err
 }
