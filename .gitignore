@@ -1,29 +1,25 @@
-# Binaries for programs and plugins
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
+# Default Deny:
+*
 
-# Test binary, built with `go test -c`
-*.test
+# Allow List:
+!.gitignore
+!.golangci.yml
+!go.mod
+!go.sum
+!CHANGELOG.md
+!CONTRIBUTING.md
+!LICENSE
+!README.md
+!docs/**/*.md
+!*.go
+!**/testdata/*.json
+!**/testdata/*.yaml
+!**/testdata/*.csv
 
-# Output of the go coverage tool
-*.out
-coverage.html
+# Allow above in all subdirectories:
+!*/
 
-# Go workspace file
-go.work
-go.work.sum
-
-# IDE and editor files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-
-# Build artifacts
-/bin/
-/dist/
+# Exceptions for allowed files:
+vendor/
+**/.gitignore
+**/.golangci.yml
