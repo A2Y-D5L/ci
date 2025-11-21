@@ -110,7 +110,7 @@ func TestOutputCaptureStderr(t *testing.T) {
 // RunWithStreams still work (fallback behavior).
 func TestNoOutputCaptureWithoutHandler(t *testing.T) {
 	// Run without handler - should not capture output
-	tgt := target.New("NoCapture", "No capture test", func(ctx context.Context) error {
+	tgt := target.New("NoCapture", "No capture test", func(_ context.Context) error {
 		fmt.Println("This should not be captured")
 		return nil
 	})
@@ -202,7 +202,7 @@ func TestMixedTargets(t *testing.T) {
 	withCapture := target.Cmd("WithCapture", "Has capture", "echo", "captured")
 
 	// Target WITHOUT capture
-	withoutCapture := target.New("WithoutCapture", "No capture", func(ctx context.Context) error {
+	withoutCapture := target.New("WithoutCapture", "No capture", func(_ context.Context) error {
 		return nil
 	})
 

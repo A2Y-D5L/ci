@@ -9,6 +9,7 @@ import (
 // CmdTarget is a target that executes a shell command with output capture support.
 type CmdTarget struct {
 	*Target
+
 	cmdName string
 	args    []string
 }
@@ -47,6 +48,7 @@ func CmdWithDeps(name, desc string, deps []T, cmdName string, args ...string) *C
 // RunWithStreams implements the RunWithStreams interface.
 // This allows the engine to capture stdout/stderr as events.
 func (c *CmdTarget) RunWithStreams(ctx context.Context, stdout, stderr io.Writer) error {
+	//nolint:gosec // G204: Command arguments are intentionally user-provided for flexibility
 	cmd := exec.CommandContext(ctx, c.cmdName, c.args...)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr

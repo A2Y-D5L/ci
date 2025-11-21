@@ -12,12 +12,12 @@ import (
 
 func main() {
 	// Define some example targets
-	lint := target.New("Lint", "Run code linters", func(ctx context.Context) error {
+	lint := target.New("Lint", "Run code linters", func(_ context.Context) error {
 		fmt.Println("Running golangci-lint...")
 		return nil
 	})
 
-	test := target.New("Test", "Run unit tests", func(ctx context.Context) error {
+	test := target.New("Test", "Run unit tests", func(_ context.Context) error {
 		fmt.Println("Running go test...")
 		fmt.Println("=== RUN   TestExample")
 		fmt.Println("--- PASS: TestExample (0.00s)")
@@ -25,13 +25,13 @@ func main() {
 		return nil
 	}, lint)
 
-	build := target.New("Build", "Build binaries", func(ctx context.Context) error {
+	build := target.New("Build", "Build binaries", func(_ context.Context) error {
 		fmt.Println("Building application...")
 		fmt.Println("Build successful")
 		return nil
 	}, test)
 
-	all := target.New("All", "Run full CI pipeline", func(ctx context.Context) error {
+	all := target.New("All", "Run full CI pipeline", func(_ context.Context) error {
 		// All is an orchestration target
 		return nil
 	}, build)
@@ -89,7 +89,7 @@ func main() {
 	fmt.Printf("  - Pipeline completed: %d\n", countEventType[ci.PipelineCompletedEvent](events))
 }
 
-// countEventType is a generic helper to count events of a specific type
+// countEventType is a generic helper to count events of a specific type.
 func countEventType[T any](events []ci.Event) int {
 	count := 0
 	for _, e := range events {

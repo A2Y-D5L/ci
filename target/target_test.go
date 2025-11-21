@@ -13,7 +13,7 @@ import (
 // TestNew verifies basic target creation.
 func TestNew(t *testing.T) {
 	called := false
-	fn := func(ctx context.Context) error {
+	fn := func(_ context.Context) error {
 		called = true
 		return nil
 	}
@@ -46,15 +46,15 @@ func TestNew(t *testing.T) {
 
 // TestNewWithDependencies verifies target creation with dependencies.
 func TestNewWithDependencies(t *testing.T) {
-	dep1 := target.New("Dep1", "First dependency", func(ctx context.Context) error {
+	dep1 := target.New("Dep1", "First dependency", func(_ context.Context) error {
 		return nil
 	})
 
-	dep2 := target.New("Dep2", "Second dependency", func(ctx context.Context) error {
+	dep2 := target.New("Dep2", "Second dependency", func(_ context.Context) error {
 		return nil
 	})
 
-	tgt := target.New("Main", "Main target", func(ctx context.Context) error {
+	tgt := target.New("Main", "Main target", func(_ context.Context) error {
 		return nil
 	}, dep1, dep2)
 
@@ -76,7 +76,7 @@ func TestNewWithDependencies(t *testing.T) {
 // TestTargetRunError verifies error propagation from target function.
 func TestTargetRunError(t *testing.T) {
 	expectedErr := errors.New("test error")
-	tgt := target.New("ErrorTarget", "Will fail", func(ctx context.Context) error {
+	tgt := target.New("ErrorTarget", "Will fail", func(_ context.Context) error {
 		return expectedErr
 	})
 
@@ -95,7 +95,7 @@ func TestTargetRunWithContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	tgt := target.New("ContextTarget", "Uses context", func(ctx context.Context) error {
+	tgt := target.New("ContextTarget", "Uses context", func(_ context.Context) error {
 		// Should receive the cancelled context
 		select {
 		case <-ctx.Done():
@@ -136,7 +136,7 @@ func TestCmd(t *testing.T) {
 	}
 
 	// Verify it implements RunWithStreams
-	if _, ok := interface{}(tgt).(target.RunWithStreams); !ok {
+	if _, ok := any(tgt).(target.RunWithStreams); !ok {
 		t.Error("Cmd target should implement RunWithStreams interface")
 	}
 }
@@ -153,7 +153,7 @@ func TestCmdExecution(t *testing.T) {
 
 // TestCmdWithDeps verifies command target with dependencies.
 func TestCmdWithDeps(t *testing.T) {
-	dep1 := target.New("Dep1", "Dependency", func(ctx context.Context) error {
+	dep1 := target.New("Dep1", "Dependency", func(_ context.Context) error {
 		return nil
 	})
 
@@ -364,11 +364,11 @@ func TestCmdTargetIsTarget(t *testing.T) {
 // TestBuiltInTargets verifies the built-in targets are properly configured.
 func TestBuiltInTargets(t *testing.T) {
 	tests := []struct {
-		name        string
-		target      target.T
-		wantName    string
-		wantDesc    string
-		wantDepCnt  int
+		name       string
+		target     target.T
+		wantName   string
+		wantDesc   string
+		wantDepCnt int
 	}{
 		{
 			name:       "Lint",
@@ -446,9 +446,9 @@ func TestBuiltInTargetDependencyChain(t *testing.T) {
 }
 
 // TestTargetInterface verifies the target.T interface contract.
-func TestTargetInterface(t *testing.T) {
+func TestTargetInterface(_ *testing.T) {
 	// Create a target and verify all interface methods work
-	tgt := target.New("Interface", "Test interface", func(ctx context.Context) error {
+	tgt := target.New("Interface", "Test interface", func(_ context.Context) error {
 		return nil
 	})
 
@@ -463,7 +463,7 @@ func TestTargetInterface(t *testing.T) {
 }
 
 // TestRunWithStreamsInterface verifies the RunWithStreams interface.
-func TestRunWithStreamsInterface(t *testing.T) {
+func TestRunWithStreamsInterface(_ *testing.T) {
 	cmd := target.Cmd("Test", "Test", "echo", "test")
 
 	// Verify it satisfies RunWithStreams

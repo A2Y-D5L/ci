@@ -15,7 +15,7 @@ import (
 
 // testTarget creates a simple target for testing.
 func testTarget(name string) target.T {
-	return target.New(name, "Test target", func(ctx context.Context) error {
+	return target.New(name, "Test target", func(_ context.Context) error {
 		return nil
 	})
 }
@@ -526,11 +526,11 @@ func TestEndToEndWithLogRenderer(t *testing.T) {
 	var buf bytes.Buffer
 	renderer := render.NewLogRenderer(&buf)
 
-	a := target.New("A", "Base", func(ctx context.Context) error {
+	a := target.New("A", "Base", func(_ context.Context) error {
 		return nil
 	})
 
-	b := target.New("B", "Depends on A", func(ctx context.Context) error {
+	b := target.New("B", "Depends on A", func(_ context.Context) error {
 		return nil
 	}, a)
 
@@ -574,7 +574,7 @@ func TestEndToEndWithSimpleRenderer(t *testing.T) {
 	var buf bytes.Buffer
 	renderer := render.NewSimpleRenderer(&buf)
 
-	a := target.New("A", "Test", func(ctx context.Context) error {
+	a := target.New("A", "Test", func(_ context.Context) error {
 		return nil
 	})
 
@@ -599,7 +599,7 @@ func TestEndToEndWithTUIRenderer(t *testing.T) {
 	var buf bytes.Buffer
 	renderer := render.NewTUIRenderer(&buf)
 
-	a := target.New("A", "Test", func(ctx context.Context) error {
+	a := target.New("A", "Test", func(_ context.Context) error {
 		return nil
 	})
 
@@ -627,11 +627,11 @@ func TestEndToEndWithTUIRenderer(t *testing.T) {
 func TestEndToEndWithCollector(t *testing.T) {
 	collector := render.NewCollector()
 
-	a := target.New("A", "Base", func(ctx context.Context) error {
+	a := target.New("A", "Base", func(_ context.Context) error {
 		return nil
 	})
 
-	b := target.New("B", "Depends on A", func(ctx context.Context) error {
+	b := target.New("B", "Depends on A", func(_ context.Context) error {
 		return nil
 	}, a)
 

@@ -3,7 +3,6 @@ package ci_test
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -13,60 +12,61 @@ import (
 	"github.com/a2y-d5l/ci/target"
 )
 
+//nolint:gocognit,gocyclo,cyclop // test
 func TestRun(t *testing.T) {
 	for _, test := range []struct {
 		name            string
 		setupTargets    func(t *testing.T) []target.T
 		wantErr         bool
-		wantTargetCount   int
+		wantTargetCount int
 		validateResults func(t *testing.T, results map[string]ci.Result, err error)
 	}{
 		{
 			name: "simple_linear_dependency",
-			setupTargets: func(t *testing.T) []target.T {
-				a := target.New("A", "First Target", func(ctx context.Context) error {
+			setupTargets: func(_ *testing.T) []target.T {
+				a := target.New("A", "First Target", func(_ context.Context) error {
 					return nil
 				})
-				b := target.New("B", "Second Target", func(ctx context.Context) error {
+				b := target.New("B", "Second Target", func(_ context.Context) error {
 					return nil
 				}, a)
 				return []target.T{b}
 			},
-			wantErr:       false,
+			wantErr:         false,
 			wantTargetCount: 2,
-			validateResults: func(t *testing.T, results map[string]ci.Result, err error) {
+			validateResults: func(t *testing.T, results map[string]ci.Result, _ error) {
 				assertTargetCompleted(t, results, "A", false, false)
 				assertTargetCompleted(t, results, "B", false, false)
 			},
 		},
 		{
 			name: "diamond_dependency",
-			setupTargets: func(t *testing.T) []target.T {
+			setupTargets: func(_ *testing.T) []target.T {
 				var mu sync.Mutex
 				executionOrder := []string{}
 
-				a := target.New("A", "Base Target", func(ctx context.Context) error {
+				a := target.New("A", "Base Target", func(_ context.Context) error {
 					mu.Lock()
 					executionOrder = append(executionOrder, "A")
 					mu.Unlock()
 					return nil
 				})
 
-				b := target.New("B", "Depends on A", func(ctx context.Context) error {
+				b := target.New("B", "Depends on A", func(_ context.Context) error {
 					mu.Lock()
 					executionOrder = append(executionOrder, "B")
 					mu.Unlock()
 					return nil
 				}, a)
 
-				c := target.New("C", "Also depends on A", func(ctx context.Context) error {
+				c := target.New("C", "Also depends on A", func(_ context.Context) error {
 					mu.Lock()
 					executionOrder = append(executionOrder, "C")
 					mu.Unlock()
 					return nil
 				}, a)
 
-				d := target.New("D", "Depends on B and C", func(ctx context.Context) error {
+				d := target.New("D", "Depends on B and C", func(_ context.Context) error {
 					mu.Lock()
 					executionOrder = append(executionOrder, "D")
 					mu.Unlock()
@@ -97,9 +97,9 @@ func TestRun(t *testing.T) {
 
 				return []target.T{d}
 			},
-			wantErr:       false,
+			wantErr:         false,
 			wantTargetCount: 4,
-			validateResults: func(t *testing.T, results map[string]ci.Result, err error) {
+			validateResults: func(t *testing.T, results map[string]ci.Result, _ error) {
 				for _, name := range []string{"A", "B", "C", "D"} {
 					assertTargetCompleted(t, results, name, false, false)
 				}
@@ -107,10 +107,10 @@ func TestRun(t *testing.T) {
 		},
 		{
 			name: "shared_dependency_executes_once",
-			setupTargets: func(t *testing.T) []target.T {
+			setupTargets: func(_ *testing.T) []target.T {
 				executionCount := &sync.Map{}
 
-				a := target.New("A", "Shared base", func(ctx context.Context) error {
+				a := target.New("A", "Shared base", func(_ context.Context) error {
 					count := 0
 					if val, ok := executionCount.Load("A"); ok {
 						count = val.(int)
@@ -119,12 +119,12 @@ func TestRun(t *testing.T) {
 					return nil
 				})
 
-				b := target.New("B", "Depends on A", func(ctx context.Context) error {
+				b := target.New("B", "Depends on A", func(_ context.Context) error {
 					executionCount.Store("B", 1)
 					return nil
 				}, a)
 
-				c := target.New("C", "Also depends on A", func(ctx context.Context) error {
+				c := target.New("C", "Also depends on A", func(_ context.Context) error {
 					executionCount.Store("C", 1)
 					return nil
 				}, a)
@@ -141,9 +141,9 @@ func TestRun(t *testing.T) {
 
 				return []target.T{b, c}
 			},
-			wantErr:       false,
+			wantErr:         false,
 			wantTargetCount: 3,
-			validateResults: func(t *testing.T, results map[string]ci.Result, err error) {
+			validateResults: func(t *testing.T, results map[string]ci.Result, _ error) {
 				for _, name := range []string{"A", "B", "C"} {
 					assertTargetCompleted(t, results, name, false, false)
 				}
@@ -151,26 +151,26 @@ func TestRun(t *testing.T) {
 		},
 		{
 			name: "failure_propagates_to_dependents",
-			setupTargets: func(t *testing.T) []target.T {
-				a := target.New("A", "Failing Target", func(ctx context.Context) error {
+			setupTargets: func(_ *testing.T) []target.T {
+				a := target.New("A", "Failing Target", func(_ context.Context) error {
 					return errors.New("Target A failed")
 				})
 
-				b := target.New("B", "Should be skipped", func(ctx context.Context) error {
+				b := target.New("B", "Should be skipped", func(_ context.Context) error {
 					t.Error("Target B should not run because A failed")
 					return nil
 				}, a)
 
-				c := target.New("C", "Should also be skipped", func(ctx context.Context) error {
+				c := target.New("C", "Should also be skipped", func(_ context.Context) error {
 					t.Error("Target C should not run because A failed")
 					return nil
 				}, a)
 
 				return []target.T{b, c}
 			},
-			wantErr:       true,
+			wantErr:         true,
 			wantTargetCount: 3,
-			validateResults: func(t *testing.T, results map[string]ci.Result, err error) {
+			validateResults: func(t *testing.T, results map[string]ci.Result, _ error) {
 				assertTargetCompleted(t, results, "A", true, false) // Failed but ran
 				assertTargetCompleted(t, results, "B", false, true) // Skipped
 				assertTargetCompleted(t, results, "C", false, true) // Skipped
@@ -178,29 +178,29 @@ func TestRun(t *testing.T) {
 		},
 		{
 			name: "partial_failure_only_affects_branch",
-			setupTargets: func(t *testing.T) []target.T {
-				a := target.New("A", "Succeeds", func(ctx context.Context) error {
+			setupTargets: func(_ *testing.T) []target.T {
+				a := target.New("A", "Succeeds", func(_ context.Context) error {
 					return nil
 				})
 
-				b := target.New("B", "Fails", func(ctx context.Context) error {
+				b := target.New("B", "Fails", func(_ context.Context) error {
 					return errors.New("B failed")
 				})
 
-				c := target.New("C", "Depends on A (should succeed)", func(ctx context.Context) error {
+				c := target.New("C", "Depends on A (should succeed)", func(_ context.Context) error {
 					return nil
 				}, a)
 
-				d := target.New("D", "Depends on B (should be skipped)", func(ctx context.Context) error {
+				d := target.New("D", "Depends on B (should be skipped)", func(_ context.Context) error {
 					t.Error("Target D should not run because B failed")
 					return nil
 				}, b)
 
 				return []target.T{c, d}
 			},
-			wantErr:       true,
+			wantErr:         true,
 			wantTargetCount: 4,
-			validateResults: func(t *testing.T, results map[string]ci.Result, err error) {
+			validateResults: func(t *testing.T, results map[string]ci.Result, _ error) {
 				assertTargetCompleted(t, results, "A", false, false) // Success
 				assertTargetCompleted(t, results, "B", true, false)  // Failed
 				assertTargetCompleted(t, results, "C", false, false) // Success
@@ -209,20 +209,20 @@ func TestRun(t *testing.T) {
 		},
 		{
 			name: "complex_multi_level_graph",
-			setupTargets: func(t *testing.T) []target.T {
+			setupTargets: func(_ *testing.T) []target.T {
 				// Graph: F -> (D, E); D -> (B, C); E -> C; B -> A; C -> A
-				a := target.New("A", "", func(ctx context.Context) error { return nil })
-				b := target.New("B", "", func(ctx context.Context) error { return nil }, a)
-				c := target.New("C", "", func(ctx context.Context) error { return nil }, a)
-				d := target.New("D", "", func(ctx context.Context) error { return nil }, b, c)
-				e := target.New("E", "", func(ctx context.Context) error { return nil }, c)
-				f := target.New("F", "", func(ctx context.Context) error { return nil }, d, e)
+				a := target.New("A", "", func(_ context.Context) error { return nil })
+				b := target.New("B", "", func(_ context.Context) error { return nil }, a)
+				c := target.New("C", "", func(_ context.Context) error { return nil }, a)
+				d := target.New("D", "", func(_ context.Context) error { return nil }, b, c)
+				e := target.New("E", "", func(_ context.Context) error { return nil }, c)
+				f := target.New("F", "", func(_ context.Context) error { return nil }, d, e)
 
 				return []target.T{f}
 			},
-			wantErr:       false,
+			wantErr:         false,
 			wantTargetCount: 6,
-			validateResults: func(t *testing.T, results map[string]ci.Result, err error) {
+			validateResults: func(t *testing.T, results map[string]ci.Result, _ error) {
 				for _, name := range []string{"A", "B", "C", "D", "E", "F"} {
 					assertTargetCompleted(t, results, name, false, false)
 				}
@@ -230,24 +230,24 @@ func TestRun(t *testing.T) {
 		},
 		{
 			name: "multiple_independent_Targets",
-			setupTargets: func(t *testing.T) []target.T {
-				a := target.New("A", "Independent 1", func(ctx context.Context) error {
+			setupTargets: func(_ *testing.T) []target.T {
+				a := target.New("A", "Independent 1", func(_ context.Context) error {
 					return nil
 				})
 
-				b := target.New("B", "Independent 2", func(ctx context.Context) error {
+				b := target.New("B", "Independent 2", func(_ context.Context) error {
 					return nil
 				})
 
-				c := target.New("C", "Independent 3", func(ctx context.Context) error {
+				c := target.New("C", "Independent 3", func(_ context.Context) error {
 					return nil
 				})
 
 				return []target.T{a, b, c}
 			},
-			wantErr:       false,
+			wantErr:         false,
 			wantTargetCount: 3,
-			validateResults: func(t *testing.T, results map[string]ci.Result, err error) {
+			validateResults: func(t *testing.T, results map[string]ci.Result, _ error) {
 				for _, name := range []string{"A", "B", "C"} {
 					assertTargetCompleted(t, results, name, false, false)
 				}
@@ -255,22 +255,22 @@ func TestRun(t *testing.T) {
 		},
 		{
 			name: "multiple_failures",
-			setupTargets: func(t *testing.T) []target.T {
-				a := target.New("A", "Fails", func(ctx context.Context) error {
+			setupTargets: func(_ *testing.T) []target.T {
+				a := target.New("A", "Fails", func(_ context.Context) error {
 					return errors.New("error A")
 				})
 
-				b := target.New("B", "Also fails", func(ctx context.Context) error {
+				b := target.New("B", "Also fails", func(_ context.Context) error {
 					return errors.New("error B")
 				})
 
-				c := target.New("C", "Also fails", func(ctx context.Context) error {
+				c := target.New("C", "Also fails", func(_ context.Context) error {
 					return errors.New("error C")
 				})
 
 				return []target.T{a, b, c}
 			},
-			wantErr:       true,
+			wantErr:         true,
 			wantTargetCount: 3,
 			validateResults: func(t *testing.T, results map[string]ci.Result, err error) {
 				assertTargetCompleted(t, results, "A", true, false)
@@ -294,7 +294,7 @@ func TestRun(t *testing.T) {
 		},
 		{
 			name: "context_cancellation",
-			setupTargets: func(t *testing.T) []target.T {
+			setupTargets: func(_ *testing.T) []target.T {
 				cancelled := make(chan struct{})
 
 				a := target.New("A", "Blocks", func(ctx context.Context) error {
@@ -303,15 +303,15 @@ func TestRun(t *testing.T) {
 					return ctx.Err()
 				})
 
-				b := target.New("B", "Should be skipped or cancelled", func(ctx context.Context) error {
+				b := target.New("B", "Should be skipped or cancelled", func(_ context.Context) error {
 					return nil
 				}, a)
 
 				return []target.T{b}
 			},
-			wantErr:       true,
+			wantErr:         true,
 			wantTargetCount: 2,
-			validateResults: func(t *testing.T, results map[string]ci.Result, err error) {
+			validateResults: func(t *testing.T, results map[string]ci.Result, _ error) {
 				// A should have run and potentially errored with context cancellation
 				if res, ok := results["A"]; ok {
 					if res.Skipped {
@@ -322,12 +322,12 @@ func TestRun(t *testing.T) {
 		},
 		{
 			name: "empty_target_list",
-			setupTargets: func(t *testing.T) []target.T {
+			setupTargets: func(_ *testing.T) []target.T {
 				return []target.T{}
 			},
-			wantErr:       false,
+			wantErr:         false,
 			wantTargetCount: 0,
-			validateResults: func(t *testing.T, results map[string]ci.Result, err error) {
+			validateResults: func(t *testing.T, results map[string]ci.Result, _ error) {
 				if len(results) != 0 {
 					t.Errorf("Expected 0 results for empty target list, got %d", len(results))
 				}
@@ -430,7 +430,7 @@ func TestConcurrentExecution(t *testing.T) {
 	var mu sync.Mutex
 
 	// Create 3 independent Targets that each take 100ms
-	a := target.New("A", "Target A", func(ctx context.Context) error {
+	a := target.New("A", "Target A", func(_ context.Context) error {
 		mu.Lock()
 		started["A"] = time.Now()
 		mu.Unlock()
@@ -438,7 +438,7 @@ func TestConcurrentExecution(t *testing.T) {
 		return nil
 	})
 
-	b := target.New("B", "Target B", func(ctx context.Context) error {
+	b := target.New("B", "Target B", func(_ context.Context) error {
 		mu.Lock()
 		started["B"] = time.Now()
 		mu.Unlock()
@@ -446,7 +446,7 @@ func TestConcurrentExecution(t *testing.T) {
 		return nil
 	})
 
-	c := target.New("C", "Target C", func(ctx context.Context) error {
+	c := target.New("C", "Target C", func(_ context.Context) error {
 		mu.Lock()
 		started["C"] = time.Now()
 		mu.Unlock()
@@ -496,16 +496,16 @@ func TestConcurrentExecution(t *testing.T) {
 func TestDeterministicErrorOrdering(t *testing.T) {
 	// Run the same test multiple times to ensure consistent ordering
 	for run := range 5 {
-		a := target.New("TargetA", "Fails", func(ctx context.Context) error {
-			return fmt.Errorf("error A")
+		a := target.New("TargetA", "Fails", func(_ context.Context) error {
+			return errors.New("error A")
 		})
 
-		b := target.New("TargetB", "Fails", func(ctx context.Context) error {
-			return fmt.Errorf("error B")
+		b := target.New("TargetB", "Fails", func(_ context.Context) error {
+			return errors.New("error B")
 		})
 
-		c := target.New("TargetC", "Fails", func(ctx context.Context) error {
-			return fmt.Errorf("error C")
+		c := target.New("TargetC", "Fails", func(_ context.Context) error {
+			return errors.New("error C")
 		})
 
 		_, err := ci.RunTargets(context.Background(), a, b, c)
@@ -529,27 +529,27 @@ func TestDeterministicErrorOrdering(t *testing.T) {
 	}
 }
 
-func assertTargetCompleted(tb testing.TB, results map[string]ci.Result, TargetName string, wantErr, wantSkipped bool) {
+func assertTargetCompleted(tb testing.TB, results map[string]ci.Result, targetName string, wantErr, wantSkipped bool) {
 	tb.Helper()
 
-	result, ok := results[TargetName]
+	result, ok := results[targetName]
 	if !ok {
-		tb.Errorf("Target %s: not found in results", TargetName)
+		tb.Errorf("Target %s: not found in results", targetName)
 		return
 	}
 
 	if (result.Err != nil) != wantErr {
-		tb.Errorf("Target %s: error = %v, wantErr %v", TargetName, result.Err, wantErr)
+		tb.Errorf("Target %s: error = %v, wantErr %v", targetName, result.Err, wantErr)
 	}
 
 	if result.Skipped != wantSkipped {
-		tb.Errorf("Target %s: skipped = %v, wantSkipped %v", TargetName, result.Skipped, wantSkipped)
+		tb.Errorf("Target %s: skipped = %v, wantSkipped %v", targetName, result.Skipped, wantSkipped)
 	}
 }
 
 // TestNilContext verifies that nil context is rejected.
 func TestNilContext(t *testing.T) {
-	tgt := target.New("Test", "Test", func(ctx context.Context) error {
+	tgt := target.New("Test", "Test", func(_ context.Context) error {
 		return nil
 	})
 
@@ -566,11 +566,11 @@ func TestNilContext(t *testing.T) {
 
 // TestNilContextWithHandler verifies that nil context is rejected with handler.
 func TestNilContextWithHandler(t *testing.T) {
-	tgt := target.New("Test", "Test", func(ctx context.Context) error {
+	tgt := target.New("Test", "Test", func(_ context.Context) error {
 		return nil
 	})
 
-	handler := ci.EventHandlerFunc(func(event ci.Event) {})
+	handler := ci.EventHandlerFunc(func(_ ci.Event) {})
 
 	//nolint:staticcheck // Testing nil context handling
 	_, err := ci.RunTargetsWithHandler(nil, handler, tgt)
@@ -591,8 +591,8 @@ func TestCycleDetection_ActualCycle(t *testing.T) {
 	// Let's test the cycle detection through indirect means
 
 	// Create a proper dependency chain first
-	a := target.New("A", "Target A", func(ctx context.Context) error { return nil })
-	b := target.New("B", "Target B", func(ctx context.Context) error { return nil }, a)
+	a := target.New("A", "Target A", func(_ context.Context) error { return nil })
+	b := target.New("B", "Target B", func(_ context.Context) error { return nil }, a)
 
 	// Try to create a cycle by having A depend on B (which is impossible with the current API)
 	// Instead, we'll verify that the detection would work by testing the DAG validation
@@ -606,7 +606,7 @@ func TestCycleDetection_ActualCycle(t *testing.T) {
 
 // TestEmptyTargetListWithHandler verifies empty target list with handler.
 func TestEmptyTargetListWithHandler(t *testing.T) {
-	handler := ci.EventHandlerFunc(func(event ci.Event) {
+	handler := ci.EventHandlerFunc(func(_ ci.Event) {
 		t.Error("Handler should not be called for empty target list")
 	})
 
@@ -623,7 +623,7 @@ func TestEmptyTargetListWithHandler(t *testing.T) {
 // TestSingleTargetNoHandler verifies single target without handler.
 func TestSingleTargetNoHandler(t *testing.T) {
 	executed := false
-	tgt := target.New("Single", "Single target", func(ctx context.Context) error {
+	tgt := target.New("Single", "Single target", func(_ context.Context) error {
 		executed = true
 		return nil
 	})
@@ -647,24 +647,26 @@ func TestSingleTargetNoHandler(t *testing.T) {
 }
 
 // TestResultFields verifies all Result fields are populated correctly.
+//
+//nolint:gocognit,nestif // Test function complexity is acceptable for comprehensive testing
 func TestResultFields(t *testing.T) {
 	expectedErr := errors.New("test error")
-	
-	failing := target.New("Failing", "Will fail", func(ctx context.Context) error {
+
+	failing := target.New("Failing", "Will fail", func(_ context.Context) error {
 		return expectedErr
 	})
 
-	success := target.New("Success", "Will succeed", func(ctx context.Context) error {
+	success := target.New("Success", "Will succeed", func(_ context.Context) error {
 		return nil
 	})
 
-	skipped := target.New("Skipped", "Will skip", func(ctx context.Context) error {
+	skipped := target.New("Skipped", "Will skip", func(_ context.Context) error {
 		t.Error("Should not execute")
 		return nil
 	}, failing)
 
 	results, err := ci.RunTargets(context.Background(), success, failing, skipped)
-	
+
 	if err == nil {
 		t.Fatal("Expected error")
 	}
@@ -746,16 +748,16 @@ func TestResultFields(t *testing.T) {
 // TestMultipleRootTargets verifies running multiple root targets simultaneously.
 func TestMultipleRootTargets(t *testing.T) {
 	// Create a shared dependency
-	shared := target.New("Shared", "Shared", func(ctx context.Context) error {
+	shared := target.New("Shared", "Shared", func(_ context.Context) error {
 		return nil
 	})
 
 	// Create two roots that both depend on shared
-	root1 := target.New("Root1", "Root 1", func(ctx context.Context) error {
+	root1 := target.New("Root1", "Root 1", func(_ context.Context) error {
 		return nil
 	}, shared)
 
-	root2 := target.New("Root2", "Root 2", func(ctx context.Context) error {
+	root2 := target.New("Root2", "Root 2", func(_ context.Context) error {
 		return nil
 	}, shared)
 
@@ -784,13 +786,13 @@ func TestMultipleRootTargets(t *testing.T) {
 // TestDeepNestedDependencies verifies deep dependency chains work correctly.
 func TestDeepNestedDependencies(t *testing.T) {
 	// Create a chain of 10 targets
-	current := target.New("Level0", "Base", func(ctx context.Context) error {
+	current := target.New("Level0", "Base", func(_ context.Context) error {
 		return nil
 	})
 
 	for i := 1; i < 10; i++ {
 		name := "Level" + string(rune('0'+i))
-		current = target.New(name, "Level", func(ctx context.Context) error {
+		current = target.New(name, "Level", func(_ context.Context) error {
 			return nil
 		}, current)
 	}
@@ -809,20 +811,20 @@ func TestDeepNestedDependencies(t *testing.T) {
 // TestErrorAggregation verifies error aggregation behavior.
 func TestErrorAggregation(t *testing.T) {
 	// Create multiple independent failing targets
-	fail1 := target.New("Fail1", "Fail 1", func(ctx context.Context) error {
+	fail1 := target.New("Fail1", "Fail 1", func(_ context.Context) error {
 		return errors.New("error 1")
 	})
 
-	fail2 := target.New("Fail2", "Fail 2", func(ctx context.Context) error {
+	fail2 := target.New("Fail2", "Fail 2", func(_ context.Context) error {
 		return errors.New("error 2")
 	})
 
-	fail3 := target.New("Fail3", "Fail 3", func(ctx context.Context) error {
+	fail3 := target.New("Fail3", "Fail 3", func(_ context.Context) error {
 		return errors.New("error 3")
 	})
 
 	_, err := ci.RunTargets(context.Background(), fail1, fail2, fail3)
-	
+
 	if err == nil {
 		t.Fatal("Expected aggregated error")
 	}
@@ -857,11 +859,11 @@ func TestErrorAggregation(t *testing.T) {
 // This test documents the behavior.
 func TestDuplicateTargetNames(t *testing.T) {
 	// Create two different targets with the same name
-	tgt1 := target.New("Duplicate", "First", func(ctx context.Context) error {
+	tgt1 := target.New("Duplicate", "First", func(_ context.Context) error {
 		return nil
 	})
 
-	tgt2 := target.New("Duplicate", "Second", func(ctx context.Context) error {
+	tgt2 := target.New("Duplicate", "Second", func(_ context.Context) error {
 		return nil
 	})
 
@@ -885,29 +887,29 @@ func TestDuplicateTargetNames(t *testing.T) {
 // TestComplexErrorScenario verifies complex failure scenarios.
 func TestComplexErrorScenario(t *testing.T) {
 	// Create a scenario with partial failures
-	base := target.New("Base", "Base", func(ctx context.Context) error {
+	base := target.New("Base", "Base", func(_ context.Context) error {
 		return nil
 	})
 
-	failBranch := target.New("FailBranch", "Will fail", func(ctx context.Context) error {
+	failBranch := target.New("FailBranch", "Will fail", func(_ context.Context) error {
 		return errors.New("branch failed")
 	}, base)
 
-	successBranch := target.New("SuccessBranch", "Will succeed", func(ctx context.Context) error {
+	successBranch := target.New("SuccessBranch", "Will succeed", func(_ context.Context) error {
 		return nil
 	}, base)
 
-	skipTarget := target.New("SkipTarget", "Will skip", func(ctx context.Context) error {
+	skipTarget := target.New("SkipTarget", "Will skip", func(_ context.Context) error {
 		t.Error("Should not execute")
 		return nil
 	}, failBranch)
 
-	finalTarget := target.New("FinalTarget", "Final", func(ctx context.Context) error {
+	finalTarget := target.New("FinalTarget", "Final", func(_ context.Context) error {
 		return nil
 	}, successBranch, skipTarget)
 
 	results, err := ci.RunTargets(context.Background(), finalTarget)
-	
+
 	if err == nil {
 		t.Fatal("Expected error due to failures")
 	}
@@ -934,9 +936,9 @@ func TestComplexErrorScenario(t *testing.T) {
 	}
 }
 
-// Helper function
+// Helper function.
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 || 
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
 		s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
 		findSubstring(s, substr))
 }

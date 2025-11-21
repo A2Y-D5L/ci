@@ -60,6 +60,8 @@ func RunTargetsWithHandler(ctx context.Context, handler EventHandler, targets ..
 }
 
 // detectCycles performs DFS-based cycle detection over the definitions.
+//
+//nolint:gocognit // Cycle detection requires complex graph traversal logic
 func detectCycles(targets ...target.T) error {
 	const (
 		unvisited = iota
@@ -186,6 +188,8 @@ func sortStrings(s []string) {
 }
 
 // run executes the DAG for the specified targets and their dependencies.
+//
+//nolint:gocognit,gocyclo,cyclop,funlen // Core execution engine requires complex orchestration logic
 func run(ctx context.Context, handler EventHandler, targets ...target.T) (map[string]Result, error) {
 	if ctx == nil {
 		return nil, errors.New("context must not be nil")
@@ -332,13 +336,13 @@ func run(ctx context.Context, handler EventHandler, targets ...target.T) (map[st
 				}
 
 				// Execute target with optional output capture
-				var err error
+				var runErr error
 				if targetWithStreams, ok := n.tgt.(target.RunWithStreams); ok && handler != nil {
 					// Target supports output capture - set up pipes
-					err = runWithCapture(ctx, targetWithStreams, n.tgt, handler)
+					runErr = runWithCapture(ctx, targetWithStreams, n.tgt, handler)
 				} else {
 					// Fall back to regular Run() - output goes to os.Stdout/Stderr
-					err = n.tgt.Run(ctx)
+					runErr = n.tgt.Run(ctx)
 				}
 
 				end := time.Now()
@@ -346,7 +350,7 @@ func run(ctx context.Context, handler EventHandler, targets ...target.T) (map[st
 				n.mu.Lock()
 				n.result = Result{
 					Target:      n.tgt,
-					Err:         err,
+					Err:         runErr,
 					StartedAt:   start,
 					CompletedAt: end,
 					Skipped:     false,
@@ -359,7 +363,7 @@ func run(ctx context.Context, handler EventHandler, targets ...target.T) (map[st
 						Time:     end,
 						Target:   n.tgt,
 						Duration: end.Sub(start),
-						Error:    err,
+						Error:    runErr,
 						Skipped:  false,
 					})
 				}
@@ -437,14 +441,20 @@ func run(ctx context.Context, handler EventHandler, targets ...target.T) (map[st
 // runWithCapture executes a target with output capture enabled.
 // It creates pipes for stdout/stderr, starts goroutines to read from them
 // and emit TargetOutputEvent, then runs the target with the pipe writers.
-func runWithCapture(ctx context.Context, targetWithStreams target.RunWithStreams, tgt target.T, handler EventHandler) error {
+func runWithCapture(
+	ctx context.Context,
+	targetWithStreams target.RunWithStreams,
+	tgt target.T,
+	handler EventHandler,
+) error {
 	// Create pipes for stdout and stderr
 	stdoutR, stdoutW := io.Pipe()
 	stderrR, stderrW := io.Pipe()
 
 	// Start goroutines to capture output
+	const numCaptureStreams = 2 // stdout and stderr
 	var captureWg sync.WaitGroup
-	captureWg.Add(2)
+	captureWg.Add(numCaptureStreams)
 
 	// Capture stdout
 	go func() {
@@ -478,8 +488,8 @@ func runWithCapture(ctx context.Context, targetWithStreams target.RunWithStreams
 	err := targetWithStreams.RunWithStreams(ctx, stdoutW, stderrW)
 
 	// Close the write ends of the pipes to signal EOF to the readers
-	stdoutW.Close()
-	stderrW.Close()
+	_ = stdoutW.Close()
+	_ = stderrW.Close()
 
 	// Wait for all output to be captured
 	captureWg.Wait()

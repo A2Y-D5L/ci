@@ -17,7 +17,7 @@ import (
 func TestEventEmission(t *testing.T) {
 	collector := render.NewCollector()
 
-	a := target.New("A", "Test", func(ctx context.Context) error {
+	a := target.New("A", "Test", func(_ context.Context) error {
 		return nil
 	})
 
@@ -57,12 +57,12 @@ func TestEventEmission(t *testing.T) {
 func TestEventOrder(t *testing.T) {
 	collector := render.NewCollector()
 
-	a := target.New("A", "Base", func(ctx context.Context) error {
+	a := target.New("A", "Base", func(_ context.Context) error {
 		time.Sleep(10 * time.Millisecond)
 		return nil
 	})
 
-	b := target.New("B", "Depends on A", func(ctx context.Context) error {
+	b := target.New("B", "Depends on A", func(_ context.Context) error {
 		time.Sleep(10 * time.Millisecond)
 		return nil
 	}, a)
@@ -119,7 +119,7 @@ func TestEventOrder(t *testing.T) {
 func TestEventTimestamps(t *testing.T) {
 	collector := render.NewCollector()
 
-	a := target.New("A", "Test", func(ctx context.Context) error {
+	a := target.New("A", "Test", func(_ context.Context) error {
 		time.Sleep(10 * time.Millisecond)
 		return nil
 	})
@@ -159,10 +159,10 @@ func TestEventTimestamps(t *testing.T) {
 func TestPipelineStartedEvent(t *testing.T) {
 	collector := render.NewCollector()
 
-	a := target.New("A", "A", func(ctx context.Context) error { return nil })
-	b := target.New("B", "B", func(ctx context.Context) error { return nil }, a)
-	c := target.New("C", "C", func(ctx context.Context) error { return nil }, a)
-	d := target.New("D", "D", func(ctx context.Context) error { return nil }, b, c)
+	a := target.New("A", "A", func(_ context.Context) error { return nil })
+	b := target.New("B", "B", func(_ context.Context) error { return nil }, a)
+	c := target.New("C", "C", func(_ context.Context) error { return nil }, a)
+	d := target.New("D", "D", func(_ context.Context) error { return nil }, b, c)
 
 	_, err := ci.RunTargetsWithHandler(context.Background(), collector, d)
 	if err != nil {
@@ -193,7 +193,7 @@ func TestPipelineStartedEvent(t *testing.T) {
 func TestTargetCompletedEventSuccess(t *testing.T) {
 	collector := render.NewCollector()
 
-	a := target.New("A", "Test", func(ctx context.Context) error {
+	a := target.New("A", "Test", func(_ context.Context) error {
 		time.Sleep(50 * time.Millisecond)
 		return nil
 	})
@@ -243,7 +243,7 @@ func TestTargetCompletedEventFailure(t *testing.T) {
 	collector := render.NewCollector()
 
 	testErr := errors.New("test error")
-	a := target.New("A", "Test", func(ctx context.Context) error {
+	a := target.New("A", "Test", func(_ context.Context) error {
 		return testErr
 	})
 
@@ -285,11 +285,11 @@ func TestTargetCompletedEventFailure(t *testing.T) {
 func TestTargetCompletedEventSkipped(t *testing.T) {
 	collector := render.NewCollector()
 
-	a := target.New("A", "Failing", func(ctx context.Context) error {
+	a := target.New("A", "Failing", func(_ context.Context) error {
 		return errors.New("A failed")
 	})
 
-	b := target.New("B", "Should be skipped", func(ctx context.Context) error {
+	b := target.New("B", "Should be skipped", func(_ context.Context) error {
 		t.Error("B should not run")
 		return nil
 	}, a)
@@ -333,7 +333,7 @@ func TestTargetCompletedEventSkipped(t *testing.T) {
 func TestPipelineCompletedEvent(t *testing.T) {
 	collector := render.NewCollector()
 
-	a := target.New("A", "Test", func(ctx context.Context) error {
+	a := target.New("A", "Test", func(_ context.Context) error {
 		time.Sleep(50 * time.Millisecond)
 		return nil
 	})
@@ -382,7 +382,7 @@ func TestPipelineCompletedEvent(t *testing.T) {
 func TestPipelineCompletedEventWithError(t *testing.T) {
 	collector := render.NewCollector()
 
-	a := target.New("A", "Failing", func(ctx context.Context) error {
+	a := target.New("A", "Failing", func(_ context.Context) error {
 		return errors.New("test error")
 	})
 
@@ -421,7 +421,7 @@ func TestEventHandlerFunc(t *testing.T) {
 		events = append(events, event)
 	})
 
-	a := target.New("A", "Test", func(ctx context.Context) error {
+	a := target.New("A", "Test", func(_ context.Context) error {
 		return nil
 	})
 
@@ -440,7 +440,7 @@ func TestEventHandlerFunc(t *testing.T) {
 
 func TestNoEventHandlerBackwardCompatibility(t *testing.T) {
 	// Calling RunTargets (without handler) should still work
-	a := target.New("A", "Test", func(ctx context.Context) error {
+	a := target.New("A", "Test", func(_ context.Context) error {
 		return nil
 	})
 
@@ -462,17 +462,17 @@ func TestConcurrentEventHandling(t *testing.T) {
 	collector := render.NewCollector()
 
 	// Create multiple independent targets that run concurrently
-	a := target.New("A", "Independent 1", func(ctx context.Context) error {
+	a := target.New("A", "Independent 1", func(_ context.Context) error {
 		time.Sleep(10 * time.Millisecond)
 		return nil
 	})
 
-	b := target.New("B", "Independent 2", func(ctx context.Context) error {
+	b := target.New("B", "Independent 1", func(_ context.Context) error {
 		time.Sleep(10 * time.Millisecond)
 		return nil
 	})
 
-	c := target.New("C", "Independent 3", func(ctx context.Context) error {
+	c := target.New("C", "Independent 1", func(_ context.Context) error {
 		time.Sleep(10 * time.Millisecond)
 		return nil
 	})
@@ -506,7 +506,7 @@ func TestConcurrentEventHandling(t *testing.T) {
 func TestEventTargetReferences(t *testing.T) {
 	collector := render.NewCollector()
 
-	a := target.New("A", "Test target", func(ctx context.Context) error {
+	a := target.New("A", "Test target", func(_ context.Context) error {
 		return nil
 	})
 
@@ -539,22 +539,23 @@ func TestEventTargetReferences(t *testing.T) {
 	}
 }
 
+//nolint:gocognit // Test function complexity is acceptable for comprehensive testing
 func TestDiamondDAGEvents(t *testing.T) {
 	collector := render.NewCollector()
 
-	a := target.New("A", "Base", func(ctx context.Context) error {
+	a := target.New("A", "Base", func(_ context.Context) error {
 		return nil
 	})
 
-	b := target.New("B", "Left", func(ctx context.Context) error {
+	b := target.New("B", "Left", func(_ context.Context) error {
 		return nil
 	}, a)
 
-	c := target.New("C", "Right", func(ctx context.Context) error {
+	c := target.New("C", "Right", func(_ context.Context) error {
 		return nil
 	}, a)
 
-	d := target.New("D", "Final", func(ctx context.Context) error {
+	d := target.New("D", "Final", func(_ context.Context) error {
 		return nil
 	}, b, c)
 
@@ -622,11 +623,11 @@ func TestDiamondDAGEvents(t *testing.T) {
 func TestMultipleFailuresInEvents(t *testing.T) {
 	collector := render.NewCollector()
 
-	a := target.New("A", "Fails", func(ctx context.Context) error {
+	a := target.New("A", "Fails", func(_ context.Context) error {
 		return errors.New("error A")
 	})
 
-	b := target.New("B", "Also fails", func(ctx context.Context) error {
+	b := target.New("B", "Also fails", func(_ context.Context) error {
 		return errors.New("error B")
 	})
 

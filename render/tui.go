@@ -9,6 +9,19 @@ import (
 	"github.com/a2y-d5l/ci"
 )
 
+const (
+	statusSkipped = "skipped"
+	statusSuccess = "✓"
+
+	// TUI layout constants.
+	boxWidth           = 40
+	borderPadding      = 3
+	maxOutputLines     = 5
+	maxLineLength      = 37
+	ellipsisLength     = 3
+	runningTextPadding = 2
+)
+
 // TUIRenderer provides a rich terminal interface.
 // Output is organized by target, not interleaved.
 type TUIRenderer struct {
@@ -53,11 +66,12 @@ func (r *TUIRenderer) HandleEvent(event ci.Event) {
 		r.render()
 
 	case ci.TargetCompletedEvent:
-		if e.Error != nil {
+		switch {
+		case e.Error != nil:
 			r.targetStatus[e.TargetName()] = "failed"
-		} else if e.Skipped {
-			r.targetStatus[e.TargetName()] = "skipped"
-		} else {
+		case e.Skipped:
+			r.targetStatus[e.TargetName()] = statusSkipped
+		default:
 			r.targetStatus[e.TargetName()] = "success"
 		}
 		r.removeRunning(e.TargetName())
@@ -81,35 +95,38 @@ func (r *TUIRenderer) render() {
 	for _, targetName := range r.runningTargets {
 		status := r.targetStatus[targetName]
 		fmt.Fprintf(r.w, "\n┌─ %s ", targetName)
-		r.w.Write([]byte(strings.Repeat("─", max(0, 40-len(targetName)-3))))
+		padding := maxInt(boxWidth-len(targetName)-borderPadding, 0)
+		_, _ = r.w.Write([]byte(strings.Repeat("─", padding)))
 		fmt.Fprintf(r.w, "┐\n")
 
 		statusSymbol := "▶"
 		if status == "running" {
 			statusSymbol = "⚙"
 		}
+		runningPadding := maxInt(boxWidth-len("Running...")-borderPadding, 0)
 		fmt.Fprintf(r.w, "│ %s Running...%s│\n",
 			statusSymbol,
-			strings.Repeat(" ", max(0, 40-len("Running...")-3)))
+			strings.Repeat(" ", runningPadding))
 
 		// Show last few lines of output
 		outputs := r.targetOutputs[targetName]
 		startIdx := 0
-		if len(outputs) > 5 {
-			startIdx = len(outputs) - 5
+		if len(outputs) > maxOutputLines {
+			startIdx = len(outputs) - maxOutputLines
 		}
 		for i := startIdx; i < len(outputs); i++ {
 			line := outputs[i]
-			if len(line) > 37 {
-				line = line[:34] + "..."
+			if len(line) > maxLineLength {
+				line = line[:maxLineLength-ellipsisLength] + "..."
 			}
+			linePadding := maxInt(boxWidth-len(line)-runningTextPadding, 0)
 			fmt.Fprintf(r.w, "│ %s%s│\n",
 				line,
-				strings.Repeat(" ", max(0, 40-len(line)-2)))
+				strings.Repeat(" ", linePadding))
 		}
 
 		fmt.Fprintf(r.w, "└")
-		r.w.Write([]byte(strings.Repeat("─", 40)))
+		_, _ = r.w.Write([]byte(strings.Repeat("─", boxWidth)))
 		fmt.Fprintf(r.w, "┘\n")
 	}
 }
@@ -136,21 +153,21 @@ func (r *TUIRenderer) renderPipelineComplete(e ci.PipelineCompletedEvent) {
 	// Summary of all targets
 	fmt.Fprintf(r.w, "Summary:\n")
 	for targetName, status := range r.targetStatus {
-		symbol := "✓"
+		symbol := statusSuccess
 		switch status {
 		case "failed":
 			symbol = "✗"
-		case "skipped":
+		case statusSkipped:
 			symbol = "○"
 		case "success":
-			symbol = "✓"
+			symbol = statusSuccess
 		}
 		fmt.Fprintf(r.w, "  %s %s\n", symbol, targetName)
 	}
 	fmt.Fprintf(r.w, "\n")
 }
 
-func max(a, b int) int {
+func maxInt(a, b int) int {
 	if a > b {
 		return a
 	}

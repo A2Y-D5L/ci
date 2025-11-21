@@ -96,11 +96,11 @@ func TestEndToEndWithLogRendererFailure(t *testing.T) {
 	renderer := render.NewLogRenderer(&buf)
 
 	testErr := errors.New("intentional failure")
-	failing := target.New("Failing", "Will fail", func(ctx context.Context) error {
+	failing := target.New("Failing", "Will fail", func(_ context.Context) error {
 		return testErr
 	})
 
-	dependent := target.New("Dependent", "Should be skipped", func(ctx context.Context) error {
+	dependent := target.New("Dependent", "Should be skipped", func(_ context.Context) error {
 		t.Error("Dependent should not run")
 		return nil
 	}, failing)
@@ -137,11 +137,11 @@ func TestEndToEndWithSimpleRenderer(t *testing.T) {
 	var buf bytes.Buffer
 	renderer := render.NewSimpleRenderer(&buf)
 
-	a := target.New("A", "First", func(ctx context.Context) error {
+	a := target.New("A", "First", func(_ context.Context) error {
 		return nil
 	})
 
-	b := target.New("B", "Second", func(ctx context.Context) error {
+	b := target.New("B", "Second", func(_ context.Context) error {
 		return nil
 	}, a)
 
@@ -176,11 +176,11 @@ func TestEndToEndWithSimpleRendererFailure(t *testing.T) {
 	var buf bytes.Buffer
 	renderer := render.NewSimpleRenderer(&buf)
 
-	failing := target.New("Failing", "Will fail", func(ctx context.Context) error {
+	failing := target.New("Failing", "Will fail", func(_ context.Context) error {
 		return errors.New("test error")
 	})
 
-	skipped := target.New("Skipped", "Will skip", func(ctx context.Context) error {
+	skipped := target.New("Skipped", "Will skip", func(_ context.Context) error {
 		t.Error("Should not run")
 		return nil
 	}, failing)
@@ -208,7 +208,7 @@ func TestEndToEndWithTUIRenderer(t *testing.T) {
 	var buf bytes.Buffer
 	renderer := render.NewTUIRenderer(&buf)
 
-	a := target.New("A", "Test target", func(ctx context.Context) error {
+	a := target.New("A", "Test target", func(_ context.Context) error {
 		time.Sleep(10 * time.Millisecond)
 		return nil
 	})
@@ -257,10 +257,10 @@ func TestEndToEndWithTUIRendererComplex(t *testing.T) {
 	renderer := render.NewTUIRenderer(&buf)
 
 	// Create a diamond DAG
-	a := target.New("A", "Base", func(ctx context.Context) error { return nil })
-	b := target.New("B", "Left", func(ctx context.Context) error { return nil }, a)
-	c := target.New("C", "Right", func(ctx context.Context) error { return nil }, a)
-	d := target.New("D", "Final", func(ctx context.Context) error { return nil }, b, c)
+	a := target.New("A", "Base", func(_ context.Context) error { return nil })
+	b := target.New("B", "Left", func(_ context.Context) error { return nil }, a)
+	c := target.New("C", "Right", func(_ context.Context) error { return nil }, a)
+	d := target.New("D", "Final", func(_ context.Context) error { return nil }, b, c)
 
 	_, err := ci.RunTargetsWithHandler(context.Background(), renderer, d)
 	if err != nil {
@@ -286,12 +286,12 @@ func TestEndToEndWithTUIRendererComplex(t *testing.T) {
 func TestEndToEndWithCollector(t *testing.T) {
 	collector := render.NewCollector()
 
-	a := target.New("A", "Base", func(ctx context.Context) error {
+	a := target.New("A", "Base", func(_ context.Context) error {
 		time.Sleep(10 * time.Millisecond)
 		return nil
 	})
 
-	b := target.New("B", "Depends on A", func(ctx context.Context) error {
+	b := target.New("B", "Depends on A", func(_ context.Context) error {
 		time.Sleep(10 * time.Millisecond)
 		return nil
 	}, a)
@@ -386,7 +386,7 @@ func TestEndToEndWithOutputCapture(t *testing.T) {
 
 // TestEndToEndMixedRenderers verifies that different renderers produce different output.
 func TestEndToEndMixedRenderers(t *testing.T) {
-	tgt := target.New("Test", "Test target", func(ctx context.Context) error {
+	tgt := target.New("Test", "Test target", func(_ context.Context) error {
 		return nil
 	})
 
@@ -442,9 +442,9 @@ func TestEndToEndMixedRenderers(t *testing.T) {
 func TestEndToEndPerformance(t *testing.T) {
 	// Create 10 independent targets
 	targets := make([]target.T, 10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		name := string(rune('A' + i))
-		targets[i] = target.New(name, "Test", func(ctx context.Context) error {
+		targets[i] = target.New(name, "Test", func(_ context.Context) error {
 			time.Sleep(10 * time.Millisecond)
 			return nil
 		})
@@ -467,7 +467,7 @@ func TestEndToEndPerformance(t *testing.T) {
 	}
 
 	// Verify all targets ran
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		name := string(rune('A' + i))
 		if collector.TargetCompletedCount(name) != 1 {
 			t.Errorf("Target %s should have completed once", name)
@@ -493,10 +493,11 @@ func TestEndToEndStdoutStderrSeparation(t *testing.T) {
 
 	for _, event := range collector.GetEvents() {
 		if output, ok := event.(ci.TargetOutputEvent); ok && output.TargetName() == "Both" {
-			if output.Stream == ci.StreamStdout {
+			switch output.Stream {
+			case ci.StreamStdout:
 				stdoutCount++
 				stdoutLine = output.Line
-			} else if output.Stream == ci.StreamStderr {
+			case ci.StreamStderr:
 				stderrCount++
 				stderrLine = output.Line
 			}
@@ -521,16 +522,18 @@ func TestEndToEndStdoutStderrSeparation(t *testing.T) {
 }
 
 // TestEndToEndComplexDAGWithEvents verifies event ordering in complex DAG.
+//
+//nolint:gocognit // Test function complexity is acceptable for comprehensive testing
 func TestEndToEndComplexDAGWithEvents(t *testing.T) {
 	collector := render.NewCollector()
 
 	// Create complex DAG: F -> (D, E); D -> (B, C); E -> C; B -> A; C -> A
-	a := target.New("A", "Base", func(ctx context.Context) error { return nil })
-	b := target.New("B", "Level 2", func(ctx context.Context) error { return nil }, a)
-	c := target.New("C", "Level 2", func(ctx context.Context) error { return nil }, a)
-	d := target.New("D", "Level 3", func(ctx context.Context) error { return nil }, b, c)
-	e := target.New("E", "Level 3", func(ctx context.Context) error { return nil }, c)
-	f := target.New("F", "Final", func(ctx context.Context) error { return nil }, d, e)
+	a := target.New("A", "Base", func(_ context.Context) error { return nil })
+	b := target.New("B", "Level 2", func(_ context.Context) error { return nil }, a)
+	c := target.New("C", "Level 2", func(_ context.Context) error { return nil }, a)
+	d := target.New("D", "Level 3", func(_ context.Context) error { return nil }, b, c)
+	e := target.New("E", "Level 3", func(_ context.Context) error { return nil }, c)
+	f := target.New("F", "Final", func(_ context.Context) error { return nil }, d, e)
 
 	_, err := ci.RunTargetsWithHandler(context.Background(), collector, f)
 	if err != nil {

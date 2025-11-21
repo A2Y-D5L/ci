@@ -10,6 +10,7 @@ import (
 	"github.com/a2y-d5l/ci/target"
 )
 
+//nolint:funlen // Example main function demonstrating multiple use cases
 func main() {
 	fmt.Println("╔══════════════════════════════════════════════════════════════╗")
 	fmt.Println("║  Phase 3: Output Capture Demo                               ║")
@@ -94,12 +95,12 @@ func main() {
 	withCapture := target.Cmd("WithCapture", "Supports capture", "echo", "This output is captured!")
 
 	// Target WITHOUT capture (regular function)
-	withoutCapture := target.New("WithoutCapture", "No capture", func(ctx context.Context) error {
+	withoutCapture := target.New("WithoutCapture", "No capture", func(_ context.Context) error {
 		fmt.Println("This goes directly to stdout (not captured)")
 		return nil
 	})
 
-	allTargets := target.New("AllTargets", "Run both", func(ctx context.Context) error {
+	allTargets := target.New("AllTargets", "Run both", func(_ context.Context) error {
 		return nil
 	}, withCapture, withoutCapture)
 
