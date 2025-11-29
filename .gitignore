@@ -4,6 +4,10 @@
 # Allow List:
 !.gitignore
 !.golangci.yml
+!wip/examples/clients/web/frontend/**/*.js
+!wip/examples/clients/web/frontend/**/*.html
+!wip/examples/clients/web/frontend/**/*.css
+!wip/examples/clients/web/**/*.md
 !go.mod
 !go.sum
 !CHANGELOG.md
